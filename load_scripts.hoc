@@ -1,0 +1,10 @@
+objref soma_ref
+objref tree_root
+
+xopen("fixnseg.hoc")				// sets appropriate compartment size
+xopen("readcell.hoc")				// reads file, adjusts for spines according to G Major thesis
+xopen("actionPotentialPlayer.hoc")
+xopen("analyticFunctions.hoc")
+xopen("measureMeanAtten.hoc")
+
+flag_spines = 1  // Don't compensate for spines

@@ -1,0 +1,70 @@
+/************************************************************
+
+	Christina Weaver
+	August 2011
+	
+	insert channels from Vetter et al (2001) into dlPFC 
+	cortical pyramidal neuron from J Luebke.  Includes Mainen's 
+	synthetic axon (from the 1995 Mainen et al. paper).
+
+************************************************************/
+
+load_file("nrngui.hoc")
+
+// now load morph;  recall that 'basic_shape()' resets the morphology
+load_file("Jul16IR3f_fromSWCthenManual_Nov22-11.hoc")
+
+load_file("aux_procs.hoc")
+
+{ncp = 0   forall ncp += nseg }
+printf("Before correction ncp = %d\n",ncp)
+
+xopen("electro_procs.hoc")
+
+    V1_effective_ApicalSpineDensity = 0.67322181	//  total of 1153 spines, divided by total apical length
+    V1_effective_BasalSpineDensity  = 0.4886992	//  total of 874 spines, divided by total basal  length
+
+    applySubtreeConstantSpineDensity(apical, SurfaceAreaOneApicalSpine, V1_effective_ApicalSpineDensity)
+    applySubtreeConstantSpineDensity(basal,  SurfaceAreaOneBasalSpine,  V1_effective_BasalSpineDensity)
+
+    geom_nseg(100,0.1)
+
+{ncp = 0   forall ncp += nseg }
+printf("After correction ncp = %d\n",ncp)
+
+
+// Using SEClamp, as recommended on the NEURON User Forum.  See init_PFC.hoc for details.
+load_file("rigPFCmod.ses")
+
+
+INITDUR = 80	//50
+VO = -70
+V0 = -70	//avoid ambiguity of "Capital O" vs "zero 0"
+
+
+//reduce soma size
+soma.L *= 0.66667
+soma.diam *= 0.66667
+
+set_epasNG(72)
+scale_gpas(4.8e-5)
+
+scaleNa(25,1e3)
+scaleKV(65,16.6667)
+
+// inject several levels of current injection, and record the firing rates that come out.
+
+load_file("custominit.hoc")
+load_file("batchrun.hoc")
+
+tstop = 1200
+dt=0.05
+steps_per_ms = 20
+forall { if( ismembrane("na") )   vshift_na=-10.5 }  
+
+
+for( iVal=.03; iVal<=.28; iVal = iVal+.05) {
+    run_1Step(200,700,iVal)
+}
+
+

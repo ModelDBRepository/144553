@@ -1,0 +1,183 @@
+/************************************************************
+
+	Christina Weaver
+	August 2011
+	
+	insert channels from Vetter et al (2001) into Jennie's 
+	PFC and Visual Cortex neurons.  Includes Mainen's 
+	synthetic axon (from the 1995 Mainen et al. paper).
+
+************************************************************/
+
+load_file("nrngui.hoc")
+
+// now load morph;  recall that 'basic_shape()' resets the morphology
+load_file("May3IR2t_ImportFromSWCthenManual_Aug19-11.hoc")
+
+load_file("aux_procs.hoc")
+
+xopen("electro_procs.hoc")
+
+    PFC_effective_ApicalSpineDensity = 0.83524895	//  total of 5891 spines, divided by total apical length of 7052.987 microns
+    PFC_effective_BasalSpineDensity  = 1.1177593	//  total of 4014 spines, divided by total basal  length of 3591.1131 microns
+
+    applySubtreeConstantSpineDensity(apical, SurfaceAreaOneApicalSpine, PFC_effective_ApicalSpineDensity)
+    applySubtreeConstantSpineDensity(basal,  SurfaceAreaOneBasalSpine,  PFC_effective_BasalSpineDensity)
+    geom_nseg(100,0.1)
+
+// Using SEClamp, as recommended on the NEURON User Forum.  See init_PFC.hoc for details.
+INITDUR = 80	
+
+steps_per_ms = 40
+dt = 0.025
+
+xopen("PFC-V1_AddSynapses.hoc")
+distance()
+
+objref synBranches, synLoc
+
+/*** new parameter settings as of 23 Jan 2012 ***/
+VO = -70
+V0 = -70	//avoid ambiguity of "Capital O" vs "zero 0"
+
+set_epasNG(69)
+scale_gpas(3.8e-5)
+scaleNa(105,1e3)
+scaleKV(115,16.6667)
+
+forall { if( ismembrane("na") )   vshift_na=-10.5 }  
+
+/**** 
+    set up a Voltage Clamp
+****/
+
+objref seClamp
+    soma seClamp = new SEClamp(0.5)
+    seClamp.dur1 = 1e9
+    seClamp.amp1 = -50	// For IPSCs, neurons are held here to increase driving force.
+    seClamp.dur2 = 0
+
+forall { v_init = -50 }
+
+
+/***** end voltage clamp ****/
+
+
+
+
+
+
+/**********************  copied from synTweak.hoc in ~/LuebkeAmatrudo_forCluster  *********/
+
+
+
+strdef synFilename
+objref synFout, tv, iv
+
+
+/**********************
+
+    Written originally in main_PFC_simEPSC_all.hoc; now copied here.
+
+    $1  number of synapses
+    $2  value of tau1
+    $3  value of tau2
+    $4  value of gAMPA
+    $s5 file basename
+
+**********************/
+proc synITweak() { local i, vecsz, btyp
+
+    adjust_Itau1($2,$1)
+    adjust_Itau2($3,$1)
+    adjust_gGABA($4,$1)
+
+    sprint(synFilename,"%s_INtR%.4f_tF%.2f_gGAB%.5f.Ibin",$s5,$2,$3,$4)
+    synFout = new File()
+    synFout.wopen(synFilename)
+
+    tv = new Vector()
+    tv.record(&t)
+    iv = new Vector()
+    iv.record(&seClamp.i)
+
+    init()
+    run()
+
+    vecsz = tv.size()
+    synFout.vwrite(&vecsz)
+    tv.fwrite(synFout)
+    iv.fwrite(synFout)
+    synFout.close()
+
+    sprint(synFilename,"%s_INtR%.4f_tF%.2f_gGAB%.5f_dist.txt",$s5,$2,$3,$4)
+    synFout = new File()
+    synFout.wopen(synFilename)
+
+    i = 0
+    forsec synBranches {
+        btyp = 0
+	ifsec apical { btyp = 1 }
+	ifsec basal  { btyp = 2 }
+        synFout.printf("%d\t%g\t%g\t%d\n",i,distance(synLoc.x[i]),distance(synLoc.x[i])-soma.diam,btyp)
+        i+=1
+    }
+    synFout.close()
+}
+
+
+
+/**********************  end from synTweak.hoc in ~/LuebkeAmatrudo_forCluster  *********/
+
+
+
+
+xopen("plot_seClamp_IPSC.ses")
+
+
+
+
+/*************  now add inhibitory synapses, and activate them one at a time.  ********/
+
+geom_nseg(100,.1)
+distance()
+nBr = 0
+
+bDen = 0.004
+sDen = 0.00142
+dDen =   0.00284 
+pCut  = 171 
+
+
+if( doApic == 1 ) {
+
+    // activate apical synapses
+    nSynapse = AddInhSynapses_ProxDist_byDensityAB(bDen,pCut,200,200,synBranches,synLoc,nBr,sDen,dDen, 0)
+
+    endSyn = 200 + (nSynapse + 2)*200
+    distance()
+    cnt = 0
+
+    tstop=endSyn
+    synITweak(nSynapse,2.5,7.5,0.00115,"fig12_PFCapic")
+
+} else {
+
+    // activate basal synapses
+    nSynapse = AddInhSynapses_ProxDist_byDensityAB(bDen,pCut,200,200,synBranches,synLoc,nBr,sDen,dDen, 1)
+
+    endSyn = 200 + (nSynapse + 2)*200
+    distance()
+    cnt = 0
+
+    tstop=endSyn
+    synITweak(nSynapse,2.5,7.5,0.00115,"fig12_PFCbas")
+}
+
+
+{ printf("\n\n**************************\n\n") }
+{ printf("Output has been written to a file ending in .Ibin, a customized binary file format.\n") }
+{ printf("These files can be read with MATLAB.  See the .m files contained in this directory.\n") }
+{ printf("MATLAB's Statistics Toolbox is required to analyze IPSC shapes.\n") }
+{ printf("\tSample usage:  read_IPSCsims_mdb('fig12_PFCapic',0.00115)\n") }
+{ printf("\n\n**************************\n\n") }

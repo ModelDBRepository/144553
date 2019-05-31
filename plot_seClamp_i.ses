@@ -1,0 +1,15 @@
+objectvar save_window_, rvp_
+objectvar scene_vector_[3]
+objectvar ocbox_, ocbox_list_, scene_, scene_list_
+{ocbox_list_ = new List()  scene_list_ = new List()}
+{
+save_window_ = new Graph(0)
+save_window_.size(-1000,13000,-0.035,-2.32831e-10)
+scene_vector_[2] = save_window_
+{save_window_.view(-1000, -0.035, 14000, 0.035, 381, 91, 300.48, 200.32)}
+graphList[1].append(save_window_)
+save_window_.save_name("graphList[1].")
+save_window_.addvar("seClamp.i", 1, 1, 0.8, 0.9, 2)
+}
+objectvar scene_vector_[1]
+{doNotify()}

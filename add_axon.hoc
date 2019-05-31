@@ -1,0 +1,139 @@
+/*** 
+	to connect axon, based on Mainen et al. 1995.  Copied from parse.hoc in Vetter
+	et al (2001)'s "Dendritica" (dendritica-1.0/batch_back/back/parse.hoc)
+	
+	Christina Weaver, August 2011
+	
+***/
+
+n_axon_seg  	= 5		/* # nodes in synthetic axon */
+create iseg, hill, myelin[n_axon_seg], node[n_axon_seg]
+
+
+
+/*************************************************************************/
+
+objref axExcit, axSame
+proc connect_axon() { 	local a,i		// cmw Aug '11:  deleted local var 'n'  
+
+	/* Create axon  (similar to Mainen et al (Neuron, 1995) */
+		
+	create iseg
+	create node[n_axon_seg] 
+	create hill
+	create myelin[n_axon_seg]
+
+
+	a = 0
+	soma {
+	    for(x) 		  a += area(x) 
+		equiv_diam = sqrt(a/(4*PI))
+	  	//	if (swc)  equiv_diam = equivdiam /*DukeSouth*/
+    }
+
+	for i=0,n_axon_seg-1 {		
+  	  	iseg          { L=15  nseg=5  diam=equiv_diam/10 } /*Sloper&Powell 1982,Fig.71*/
+  	  	myelin[i]     { L=100 nseg=5  diam=iseg.diam  }
+    	node[i]       { L=1.0 nseg=1  diam=iseg.diam*.75 }
+    } 
+	hill          { L=10  nseg=5  diam(0:1)=4*iseg.diam:iseg.diam }
+
+	soma      	connect hill(0), 0.5
+	hill          	connect iseg(0), 1
+	iseg       	connect myelin[0](0), 1
+	myelin[0]  	connect node[0](0), 1
+	for i=0,n_axon_seg-2  { 
+		node[i]	connect myelin[i+1](0),1
+		myelin[i+1] 	connect node[i+1](0),1 
+	}
+	
+	axExcit = new SectionList()
+	axSame  = new SectionList()
+	hill axExcit.append()
+	iseg axExcit.append()
+	forsec "myelin" axSame.append()
+	
+	Axon = 1
+
+}
+
+
+proc add_axon() { 
+		connect_axon()
+		//origin.sec  distance(0,originx)	// cmw Aug '11:  not needed
+		insert_channels()
+		reset()
+		Axon = 1
+		define_shape()
+}
+
+
+/*************************************************************************/
+
+proc remove_axon() {
+
+		forsec "iseg" delete_section()  // take out axon 9.2.99
+		forsec "hill" delete_section()
+		forsec "myelin" delete_section()
+		//forsec "node" delete_section() not the node - used for calcs
+
+		//origin.sec distance(0,originx)	// cmw Aug '11:  not needed
+		Axon = 0	
+		define_shape()
+		}
+
+
+/*************************************************************************/
+
+
+proc insert_channels() {	/* insert channels and set reversal potentials */
+
+
+		forall {				
+			insert pas  /* generic conductance with reverse potential */
+ 			//insert pk   /* backpropagaton tools */
+			insert na  
+			insert kv
+		}
+
+		// Vetter et al allowed the option to include Q, Ca, KCa, KM currents here.  
+		// cmw:  DELETED Aug '11
+
+		forsec "myelin" uninsert kv /* no delayed rectifiers in myelin */
+
+		/* set reversal potentials */
+		forall 				e_pas     = -70
+		forall if(ismembrane("k_ion"))  ek  	  = Ek
+		forall if(ismembrane("na_ion")) ena	  = Ena 
+		forall if(ismembrane("na_ion"))	vshift_na = -5  
+		forall if(ismembrane("ca_ion")) { eca     = 140   
+  			     			  ion_style("ca_ion",0,1,0,0,0)
+  			     			  vshift_ca = 0		          
+  		}
+}
+
+
+
+proc insert_passive() {	/* insert channels and set reversal potentials */
+
+
+		forall {				
+			insert pas  /* generic conductance with reverse potential */
+		}
+
+		/* set reversal potentials */
+		forall 				e_pas     = -70
+}
+
+/*************************************************************************/
+
+
+
+proc add_passive_axon() { 
+		connect_axon()
+		//origin.sec  distance(0,originx)	// cmw Aug '11:  not needed
+		insert_passive()
+		passive_set()
+		Axon = 1
+		define_shape()
+}

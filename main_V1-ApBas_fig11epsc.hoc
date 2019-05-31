@@ -1,0 +1,271 @@
+/************************************************************
+
+	Christina Weaver
+	August 2011
+	
+	insert channels from Vetter et al (2001) into Jennie's 
+	PFC and Visual Cortex neurons.  Includes Mainen's 
+	synthetic axon (from the 1995 Mainen et al. paper).
+
+************************************************************/
+
+load_file("nrngui.hoc")
+
+// now load morph;  recall that 'basic_shape()' resets the morphology
+load_file("Jul16IR3f_fromSWCthenManual_Nov22-11.hoc")
+
+load_file("aux_procs.hoc")
+
+xopen("electro_procs.hoc")
+
+    V1_effective_ApicalSpineDensity = 0.67322181	//  total of 1153 spines, divided by total apical length
+    V1_effective_BasalSpineDensity  = 0.4886992	//  total of 874 spines, divided by total basal  length
+
+    applySubtreeConstantSpineDensity(apical, SurfaceAreaOneApicalSpine, V1_effective_ApicalSpineDensity)
+    applySubtreeConstantSpineDensity(basal,  SurfaceAreaOneBasalSpine,  V1_effective_BasalSpineDensity)
+
+    geom_nseg(100,0.1)
+
+// Using SEClamp, as recommended on the NEURON User Forum.  See init_PFC.hoc for details.
+INITDUR = 80	//50
+
+steps_per_ms = 40
+dt = 0.025
+
+xopen("PFC-V1_AddSynapses.hoc")
+
+
+
+
+
+
+
+
+
+distance()
+
+objref synBranches, synLoc
+
+/*** new parameter settings as of 23 Jan 2012 ***/
+VO = -70
+V0 = -70	//avoid ambiguity of "Capital O" vs "zero 0"
+
+set_epasNG(72)
+scale_gpas(4.8e-5)
+scaleNa(25,1e3)
+scaleKV(65,16.6667)
+
+forall { if( ismembrane("na") )   vshift_na=-10.5 }  
+
+forall { v_init = -70 }
+
+// soma of V1 cell is smaller than dlPFC soma.
+soma.L *= 0.66667
+soma.diam *= 0.66667
+
+/**** 
+    set up a Voltage Clamp
+****/
+
+objref seClamp
+    soma seClamp = new SEClamp(0.5)
+    seClamp.dur1 = 1e9
+    seClamp.amp1 = -70
+    seClamp.dur2 = 0
+
+
+
+
+/***** end voltage clamp ****/
+
+
+
+
+
+
+/**********************  copied from synTweak.hoc in ~/LuebkeAmatrudo_forCluster  *********/
+
+
+
+strdef synFilename
+objref synFout, tv, iv
+
+/**********************
+
+    Written originally in main_PFC_simEPSC_all.hoc; now copied here.
+
+    $1  number of synapses
+    $2  value of tau1
+    $3  value of tau2
+    $4  value of gAMPA
+    $s5 file basename
+
+**********************/
+proc synTweak() { local i, vecsz, btyp
+
+    adjust_tau1($2,$1)
+    adjust_tau2($3,$1)
+    adjust_gAMPA($4,$1)
+
+    sprint(synFilename,"%s_tR%.4f_tF%.2f_gAMP%.5f.Ibin",$s5,$2,$3,$4)
+    synFout = new File()
+    synFout.wopen(synFilename)
+
+    tv = new Vector()
+    tv.record(&t)
+    iv = new Vector()
+    iv.record(&seClamp.i)
+
+    init()
+    run()
+
+    vecsz = tv.size()
+    synFout.vwrite(&vecsz)
+    tv.fwrite(synFout)
+    iv.fwrite(synFout)
+    synFout.close()
+
+    sprint(synFilename,"%s_tR%.4f_tF%.2f_gAMP%.5f_dist.txt",$s5,$2,$3,$4)
+    synFout = new File()
+    synFout.wopen(synFilename)
+
+    i = 0
+    forsec synBranches {
+        btyp = 0
+	ifsec apical { btyp = 1 }
+	ifsec basal  { btyp = 2 }
+        synFout.printf("%d\t%g\t%g\t%d\n",i,distance(synLoc.x[i]),distance(synLoc.x[i])-soma.diam,btyp)
+         i+=1
+    }
+    synFout.close()
+}
+
+
+
+/**********************
+
+    Written originally in main_PFC_simEPSC_all.hoc; now copied here.
+
+    $1  number of synapses
+    $2  value of tau1
+    $3  value of tau2
+    $4  value of gAMPA
+    $s5 file basename
+
+**********************/
+proc synITweak() { local i, vecsz, btyp
+
+    adjust_Itau1($2,$1)
+    adjust_Itau2($3,$1)
+    adjust_gGABA($4,$1)
+
+    sprint(synFilename,"%s_INtR%.4f_tF%.2f_gGAB%.5f.Ibin",$s5,$2,$3,$4)
+    synFout = new File()
+    synFout.wopen(synFilename)
+
+    tv = new Vector()
+    tv.record(&t)
+    iv = new Vector()
+    iv.record(&seClamp.i)
+
+    init()
+    run()
+
+    vecsz = tv.size()
+    synFout.vwrite(&vecsz)
+    tv.fwrite(synFout)
+    iv.fwrite(synFout)
+    synFout.close()
+
+    sprint(synFilename,"%s_INtR%.4f_tF%.2f_gGAB%.5f_dist.txt",$s5,$2,$3,$4)
+    synFout = new File()
+    synFout.wopen(synFilename)
+
+    i = 0
+    forsec synBranches {
+        btyp = 0
+	ifsec apical { btyp = 1 }
+	ifsec basal  { btyp = 2 }
+        synFout.printf("%d\t%g\t%g\t%d\n",i,distance(synLoc.x[i]),distance(synLoc.x[i])-soma.diam,btyp)
+        i+=1
+    }
+    synFout.close()
+}
+
+
+
+
+
+
+/**********************  end from synTweak.hoc in ~/LuebkeAmatrudo_forCluster  *********/
+
+xopen("plot_seClamp_i.ses")
+
+nBr = 0
+
+if( doSynType == 0 ) {
+
+    // activate apical synapses, same gAMPA as the dlPFC model
+
+    nSynapse = AddExcSynapses_byNumber(14,0,200,200,synBranches,synLoc)
+
+    endSyn = 200 + (nSynapse + 2)*200
+    distance()
+    cnt = 0
+
+    tstop=endSyn
+    synTweak(nSynapse,.15,4,.00054,"fig11_V1sameAMPA_apic")
+
+} 
+
+if( doSynType == 1 ) {
+
+    // activate basal synapses, same gAMPA as the dlPFC model
+    nSynapse = AddExcSynapses_byNumber(0,13,200,200,synBranches,synLoc)
+
+    endSyn = 200 + (nSynapse + 2)*200
+    distance()
+    cnt = 0
+
+    tstop=endSyn
+    synTweak(nSynapse,.15,4,.00054,"fig11_V1sameAMPA_bas")
+}
+
+
+if( doSynType == 2 ) {
+
+    // activate apical synapses, lower gAMPA 
+
+    nSynapse = AddExcSynapses_byNumber(14,0,200,200,synBranches,synLoc)
+
+    endSyn = 200 + (nSynapse + 2)*200
+    distance()
+    cnt = 0
+
+    tstop=endSyn
+    synTweak(nSynapse,.15,4,.00017,"fig11_V1lowAMPA_apic")
+
+} 
+
+if( doSynType == 3 ) {
+
+    // activate basal synapses, lower gAMPA
+    nSynapse = AddExcSynapses_byNumber(0,13,200,200,synBranches,synLoc)
+
+    endSyn = 200 + (nSynapse + 2)*200
+    distance()
+    cnt = 0
+
+    tstop=endSyn
+    synTweak(nSynapse,.15,4,.00017,"fig11_V1lowAMPA_bas")
+}
+
+
+printf("\n\n**************************\n\n")
+printf("Output has been written to a file ending in .Ibin, a customized binary file format.\n")
+printf("These files can be read with MATLAB.  See the .m files contained in this directory.\n")
+printf("MATLAB's Statistics Toolbox is required to analyze EPSC shapes.\n")
+printf("\tSample usage:  read_EPSCsims_mdb('fig11_PFCapic',0.00054)\n")
+printf("\n\n**************************\n\n")
+
+

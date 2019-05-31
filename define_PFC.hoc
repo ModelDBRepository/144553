@@ -1,0 +1,12 @@
+load_file("May3IR2t_ImportFromSWCthenManual_Aug19-11.hoc")
+
+// load auxiliary files from Vetter et al (2001)
+load_file("add_axon.hoc")
+load_file("init_model.hoc")
+
+//add axon and morphologic settings
+init_passive_model()
+add_passive_axon()
+
+xopen("coskren_procs.hoc")
+xopen("aux_pass.hoc")

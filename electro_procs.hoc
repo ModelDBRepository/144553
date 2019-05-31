@@ -1,0 +1,30 @@
+/*
+ *	Loading Patrick Coskren's electrotonic analysis files
+ *	
+ *	The following procedures are available:
+ *
+ *		In measureMeanAtten.hoc:
+ *		Apical / Basal trees must be deleted if you want to separate them:
+ *			meanInwardAttenuationAllFrequencies(soma_ref)
+ *			meanOutwardAttenuationAllFrequencies(soma_ref)
+ *
+ *		In analyticFunctions.hoc:
+ *			inputResistance(soma_ref)		
+ *			BAPvalues(soma_ref)
+ */
+
+xopen("load_scripts.hoc")
+E_PAS=-66
+STD_SOMA=7.05
+soma {
+  nseg = 1
+  soma_ref = new SectionRef()
+}
+celsius = 21
+
+// cmw 8/27/11:  now set parameters appropriately
+E_PAS = -70
+geom_nseg(500,0.1)
+forall cm = CM
+forall Ra = RA
+forall e_pas = E_PAS

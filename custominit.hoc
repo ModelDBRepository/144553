@@ -1,0 +1,50 @@
+// at this point, IClamp[0].del is 0
+IClamp[0].del = 1e9 // so it doesn't interfere with initialization
+
+load_file("vsrc.ses") // creates Vsource[0]
+
+IHOLD = 0 // is set to a nonzero value by the following proc init()
+// this is the current in nA that must be applied at the injection site
+// in order to hold v at that location to the desired potential
+
+proc init() { local dtsav, tstopsav, temp
+
+//print "V0 = ", V0, " INITDUR = ",INITDUR
+  finitialize(v_init)
+  dtsav = dt
+  dt = 0.05 // or something larger if stability and accuracy are OK
+  t = -1e4
+  tstopsav = tstop
+  tstop = t+INITDUR
+  temp = cvode.active()
+  if (temp!=0) { cvode.active(0) }
+
+  Vsource[0].rs = 0.01
+  Vsource[0].toff = 0
+  Vsource[0].amp = V0
+
+  while (t<tstop) {
+    fadvance()
+  }
+
+  IHOLD = Vsource[0].i
+
+// print "IHOLD ", IHOLD
+  Vsource[0].rs = 1e9 // so the current it delivers during a run is miniscule
+    // this is a "suspenders & belt" approach because Vsource[0].toff = 0
+    // should prevent it from delivering nonzero current when t>0.
+
+  // restore simulation parameters
+  dt = dtsav
+  tstop = tstopsav
+  t = 0
+
+  // restore and re-init cvode if necessary
+  if (temp!=0) {
+    cvode.active(1)
+    cvode.re_init()
+  } else {
+    fcurrent()
+  }
+  frecord_init()
+}

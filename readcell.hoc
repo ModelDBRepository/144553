@@ -1,0 +1,487 @@
+/* Parses a cell specification file implemented as a hoc template.
+   It is assumed that dendritic sections are named "dend[n]".  If the global
+   flag_spines is set to 1, then any explicit spines (whose names match the
+   pattern "spine[n]") are counted on each section, and then used to adjust the
+   section's length and diameter according to the normalization procedure
+   discussed in Guy Major's PhD thesis.
+     Regardless of the setting of flag_spines, all explicit spines are then
+   deleted, and tree properties set according to the passive properties
+   defined at the top of this file.
+
+   Arguments:
+     $1: the index of the cell to read.
+ */
+
+/* Passive properties.  These are mapped to NEURON's definitions of the
+   same properties below.  */
+/*  The values we used in the study */
+CM=1
+RM=20000
+RA=150
+
+/* Traub values 
+ * CM = 0.9
+ * RM = 50000
+ * RA = 250
+ */
+
+G_PAS=1/RM
+
+ApicalHeadDiam = .47
+ApicalHeadLen = .71
+ApicalNeckDiam = .19
+ApicalNeckLen = .44
+BasalHeadDiam = .56
+BasalHeadLen = .82
+BasalNeckDiam = .16
+BasalNeckLen = .54
+
+SurfaceAreaOneApicalSpine = (ApicalNeckDiam * PI * ApicalNeckLen + \
+                             ApicalHeadDiam * PI * ApicalHeadLen)
+SurfaceAreaOneBasalSpine = (BasalNeckDiam * PI * BasalNeckLen + \
+                            BasalHeadDiam * PI * BasalHeadLen)
+VolumeOneApicalSpine = \
+    PI * (ApicalNeckDiam/2.0) * (ApicalNeckDiam/2.0) * ApicalNeckLen + \
+    PI * (ApicalHeadDiam/2.0) * (ApicalHeadDiam/2.0) * ApicalHeadLen
+VolumeOneBasalSpine = \
+    PI * (BasalNeckDiam/2.0) * (BasalNeckDiam/2.0) * BasalNeckLen + \
+    PI * (BasalHeadDiam/2.0) * (BasalHeadDiam/2.0) * BasalHeadLen
+
+/*
+ * Applies spines to a cell on all dendrites matching the provided forsec
+ * pattern.  The
+ * global variable flag_spines is ignored, since this method only makes sense
+ * to call when spine processing is desired.
+ *
+ * Arguments:
+ * $1: "forsec" pattern describing the dendrites in the tree.
+ */
+proc applySubtreeSpecificSpines() { local total_surface_area, dend_surface_area, \
+    surface_area_one_spine, surface_area_all_spines \
+    localobj dendrite_pattern, each_section
+  dendrite_pattern = new String($s1)
+  surface_area_one_spine = $2
+  dendrite_count = 0
+  total_surface_area = 0
+  forsec dendrite_pattern.s {
+    each_section = new SectionRef()
+
+    dendrite_count = dendrite_count + 1
+    temp = area(0.5)
+    num_spines = 0
+    for i = 0, (each_section.nchild - 1) each_section.child[i] {
+      if (issection("spine.*")) {
+        num_spines = num_spines + 1
+      }
+    }
+
+    dend_surface_area = 0
+    for (x) {
+      dend_surface_area = dend_surface_area + area(x)
+    }
+    total_surface_area = total_surface_area + dend_surface_area
+
+    if (dend_surface_area > 0 && num_spines > 0) {
+      surface_area_all_spines = (surface_area_one_spine * num_spines)
+      factor = (dend_surface_area + surface_area_all_spines) / dend_surface_area
+      L = L * (factor^(2/3))
+      diam = diam * (factor^(1/3))
+    }
+  }
+  printf("Dendrite_count: %d\n", dendrite_count)
+  printf("total surface area before spine correction: %f\n", total_surface_area)
+}
+
+
+/*
+ * Loads a cell, replaces the spines with the Major spine correction factor.
+ *
+ * Arguments:
+ * $1: Path to neuron
+ * $2: 1 if apical spine parameters should be assumed, 2 if basal spines,
+ *     3 if both should be present, depending on whether the sections are
+ *     named dend_apical* or dend_basal*.
+ */
+proc readcell() { localobj sref
+  strdef neuron_name
+  neuron_name = $s1
+  printf("Loading neuron: %s\n", neuron_name)
+  spine_type = $2
+
+  // Before this point, a "create soma" call will have been needed to declare the
+  // soma.  However, we don't want that soma to prevent the new soma from loading.
+  // So delete it here.  (Yes, it's awkward, but the earlier create seems to be
+  // required by NEURON.)
+  forall { delete_section() }
+
+  xopen(neuron_name)
+
+  // Ensure that NEURON evaluates the cell in 3D mode when calling diam(), by
+  // using a side effect of the area() call.  It doesn't matter which section
+  // is used for the call, and the return value of area() can be discarded.
+  forall {
+    area(0.5)
+  }
+
+  // This used to be at the end of the function.  I'm trying to move it to the
+  // top, where it makes more sense, since the for(x) construct gets used to
+  // do the spine adjustment.
+  geom_nseg(100, 0.1)  // nseg according to frequency
+  forall {
+    nseg *= 9
+  }
+
+  surface_area_one_spine = -1
+  volume_one_spine = -1
+  if (spine_type == 3) {
+    applySubtreeSpecificSpines("dend_apical", SurfaceAreaOneApicalSpine)
+    applySubtreeSpecificSpines("dend_basal", SurfaceAreaOneBasalSpine)
+  } else {
+    if (spine_type == 1) {  // Apical
+      printf("using apical spines\n")
+      surface_area_one_spine = SurfaceAreaOneApicalSpine
+      volume_one_spine = VolumeOneApicalSpine
+    } else if (spine_type == 2) {
+      printf("using basal spines\n")
+      surface_area_one_spine = SurfaceAreaOneBasalSpine
+      volume_one_spine = VolumeOneBasalSpine
+    }
+
+    totalSurfaceArea = 0
+    spineSurfaceArea = 0
+    spineVolume = 0
+
+    if (flag_spines == 1) {  // Global
+      forsec "dend" {
+        temp = area(0.5)
+        sref = new SectionRef()
+        num_spines = 0
+        for j = 0, sref.nchild-1 sref.child[j] {
+          if (issection("spine.*")) {
+            num_spines = num_spines + 1
+          }
+        }
+
+        SurfaceAreaDend = 0
+        volumeDend = 0
+        for (x) {
+          SurfaceAreaDend = SurfaceAreaDend + area(x)
+        }
+        totalSurfaceArea = totalSurfaceArea + SurfaceAreaDend
+
+        if (SurfaceAreaDend > 0 && num_spines > 0) {
+          SurfaceAreaAllSpines = (surface_area_one_spine * num_spines)
+          factor = (SurfaceAreaDend + SurfaceAreaAllSpines) / SurfaceAreaDend
+          L = L * (factor^(2/3))
+          diam = diam * (factor^(1/3))
+        }
+
+        spineSurfaceArea = spineSurfaceArea + SurfaceAreaAllSpines
+        spineVolume = spineVolume + (volume_one_spine * num_spines)
+      }
+    }
+    // Print some summary info for tables 1 and 2
+    printf("\n")
+    // Technically, this is the surface area *before* spine correction.
+    printf("surface area: %g\n", totalSurfaceArea)
+  }  // spine_type != 3
+
+  forsec "soma" {
+    insert hh
+
+    /* Units are S/cm^2, values are taken from Traub 2003 */
+    gnabar_hh = 0.1875
+    gkbar_hh = 0.125
+    /* As far as I can find, Traub 2003 doesn't set a value for the leak
+       conductance, and the Traub-approved model on ModelDB doesn't include
+       one. */
+    gl_hh = 0
+    el_hh = -70
+  }
+
+  forsec "spine" {  delete_section() }
+  forall {
+    Ra = RA
+    cm = CM
+    insert pas  g_pas = G_PAS e_pas=E_PAS
+    //insert max
+    v = E_PAS
+  }
+
+  celsius = 21
+}
+
+
+
+
+/*
+ * Adds spines to a cell on all dendrites that are part of the specified SectionList.
+ * pattern.  The
+ * global variable flag_spines is ignored, since this method only makes sense
+ * to call when spine processing is desired.
+ *
+ * Arguments:
+ * $o1: SectionList to loop over
+ * $2:  Surface area of a single spine
+ * $3:  spine density for branches in the SectionList
+ *
+ *  written by Christina Weaver, Jan 2012
+ */
+proc applySubtreeConstantSpineDensity() { local total_surface_area, dend_surface_area, \
+    surface_area_one_spine, surface_area_all_spines, spine_dens, mean_diam
+
+  // Ensure that NEURON evaluates the cell in 3D mode when calling diam(), by
+  // using a side effect of the area() call.  It doesn't matter which section
+  // is used for the call, and the return value of area() can be discarded.
+  forall {
+    area(0.5)
+  }
+
+  // This used to be at the end of the function.  I'm trying to move it to the
+  // top, where it makes more sense, since the for(x) construct gets used to
+  // do the spine adjustment.
+  geom_nseg(100, 0.1)  // nseg according to frequency
+  forall {
+    nseg *= 9
+  }
+
+  surface_area_one_spine = $2
+  spine_dens = $3
+  dendrite_count = 0
+  total_surface_area = 0
+  forsec $o1 {
+
+    dendrite_count = dendrite_count + 1
+    temp = area(0.5)
+    num_spines = L * spine_dens
+
+    dend_surface_area = 0
+    mean_diam = 0
+    for (x) {
+      dend_surface_area = dend_surface_area + area(x)
+      if( x > 0 && x < 1 )  mean_diam += diam(x)
+    }
+    mean_diam /= nseg
+    total_surface_area = total_surface_area + dend_surface_area
+
+    // adjusted by Christina Weaver, 5 Jan 12.  Still some error, but better than using 
+    // Patrick's method which sets the diam throughout the section to whatever it is in the 
+    // middle of the section.  See SpineDensFix.hoc for other attempts to fix this.
+    //
+    if (dend_surface_area > 0 && num_spines > 0) {
+      surface_area_all_spines = (surface_area_one_spine * num_spines)
+      factor = (dend_surface_area + surface_area_all_spines) / dend_surface_area
+      L = L * (factor^(2/3))
+      diam = mean_diam * (factor^(1/3))
+    }
+  }
+  //printf("Dendrite_count: %d\n", dendrite_count)
+  //printf("total surface area before spine correction: %f\n", total_surface_area)
+}
+
+
+/************************************************************************************
+
+	find_totLen_byDist()
+
+	DEPRECATED.  Use find_totLen() below instead.
+
+	May 2012, cmw
+
+	Does NOT calculate the total length accurately.  It misses half a section 
+	length, equal to L/(2*nseg).  The find_totLen() function below calculates it 
+	properly.  This code is kept here as legacy.
+
+************************************************************************************/
+func find_totLen_byDist() {  local a_prLen, a_totLen, b_prLen, b_totLen, prxCut, lastX
+
+    prxCut = $1
+
+    printf("\tProximal < %g um\n",prxCut)
+    soma { distance() }
+
+    a_prLen = 0
+    a_totLen = 0
+    b_prLen = 0
+    b_totLen = 0
+
+//printf("APICAL\n")
+    forsec apical {
+        a_totLen += L
+	if( distance(1) < prxCut ) {
+	    a_prLen += L
+	    //printf("%s: **** 0 (%g) - 1 (%g):  prL %g\n",secname(),distance(0),distance(1),a_prLen)
+        }
+	if( distance(0) < prxCut  && distance(1) > prxCut ) {
+            lastX = 0
+            for(x) {
+	        if( distance(x) < prxCut ) lastX = x
+            }
+            a_prLen += distance(lastX)-distance(0)
+	    //printf("%s: ---- 0 (%g) - %g (%g) - 1 (%g):  prL %g\n",secname(),distance(0),lastX,distance(lastX),distance(1),a_prLen)
+        }
+        
+    }
+
+//printf("BASAL\n")
+    forsec basal {
+        b_totLen += L
+	if( distance(1) < prxCut ) {
+	    b_prLen += L
+	    //printf("%s: **** 0 (%g) - 1 (%g):  prL %g\n",secname(),distance(0),distance(1),b_prLen)
+        }
+	if( distance(0) < prxCut  && distance(1) > prxCut ) {
+            lastX = 0
+            for(x) {
+	        if( distance(x) < prxCut ) lastX = x
+            }
+            b_prLen += distance(lastX)-distance(0)
+	    printf("%s: ---- 0 (%g) - lastX = %g (%g) - 1 (%g):  prL %g\n",secname(),distance(0),lastX,distance(lastX),distance(1),b_prLen)
+        }
+        
+    }
+
+    printf("Soma\t%g\n",soma.L)
+    printf("Apical\n\tprox\t%g\n\tdist\t%g\n\ttotl\t%g\n",a_prLen,a_totLen-a_prLen,a_totLen)
+    printf("Basal\n\tprox\t%g\n\tdist\t%g\n\ttotl\t%g\n",b_prLen,b_totLen-b_prLen,b_totLen)
+
+    return a_prLen + b_prLen + soma.L
+}
+
+
+
+
+func find_totLen() {  local prLen, totLen, prxCut, lastX, dstChg, LChg, prDistLen
+
+    prxCut = $1
+
+    //printf("\tProximal < %g um\n",prxCut)
+    soma { distance() }
+
+    prLen = 0
+    totLen = 0
+
+
+    forsec "soma" { 
+	for(x) {
+	    if( x==0 || x == 1 ) continue
+	    Lcnt += L / nseg
+
+	}
+    }
+    prLen = Lcnt
+    totLen = Lcnt
+
+    forsec dendritic {
+	lastX = 0
+	LChg = 0
+	for(x) {
+	    if( x==0 || x==1 ) continue
+	    totLen += L / nseg
+	    if( distance(x) > prxCut ) { 
+	        continue 
+	    }
+	    //lastX = x
+	    LChg += (L / nseg)
+    	}
+	prLen += LChg
+
+        /****
+	if( distance(0) < prxCut  && distance(1) > prxCut ) {
+ 	    dstChg = distance(lastX)-distance(0)
+	    printf("%s: [L %g / nseg %d = %g; half = %g] ---- 0 (%g) - last X = %g (%g) - 1 (%g):  dstL %g\tLChg %g\tDIFF %g\n",secname(),L,nseg, L/nseg,L/(2*nseg),distance(0),lastX,distance(lastX),distance(1),dstChg,LChg,dstChg-LChg)
+	}
+	****/
+    }
+
+
+    printf("Total length, including soma (computed with L/nseg):\n\tprox\t%g\ndist\t%g\ntotal\t%g\n",prLen,totLen-prLen,totLen)
+
+    return prLen
+}
+
+
+
+
+func find_totApicLen() {  local prLen, totLen, prxCut, lastX, dstChg, LChg, prDistLen
+
+    prxCut = $1
+
+    soma { distance() }
+
+    prLen = 0
+    totLen = 0
+
+    forsec "soma" { 
+	for(x) {
+	    if( x==0 || x == 1 ) continue
+	    Lcnt += L / nseg
+
+	}
+    }
+    prLen = Lcnt
+    totLen = Lcnt
+
+    forsec apical {
+	lastX = 0
+	LChg = 0
+	for(x) {
+	    if( x==0 || x==1 ) continue
+	    totLen += L / nseg
+	    if( distance(x) > prxCut ) { 
+	        continue 
+	    }
+	    //lastX = x
+	    LChg += (L / nseg)
+    	}
+	prLen += LChg
+
+    }
+
+
+    printf("Total apical length, including soma (computed with L/nseg):\n\tprox\t%g\ndist\t%g\ntotal\t%g\n",prLen,totLen-prLen,totLen)
+
+    return prLen
+}
+
+
+func find_totBasLen() {  local prLen, totLen, prxCut, lastX, dstChg, LChg, prDistLen
+
+    prxCut = $1
+
+    soma { distance() }
+
+    prLen = 0
+    totLen = 0
+
+    forsec "soma" { 
+	for(x) {
+	    if( x==0 || x == 1 ) continue
+	    Lcnt += L / nseg
+
+	}
+    }
+    prLen = Lcnt
+    totLen = Lcnt
+
+    forsec basal {
+	lastX = 0
+	LChg = 0
+	for(x) {
+	    if( x==0 || x==1 ) continue
+	    totLen += L / nseg
+	    if( distance(x) > prxCut ) { 
+	        continue 
+	    }
+	    //lastX = x
+	    LChg += (L / nseg)
+    	}
+	prLen += LChg
+
+    }
+
+
+    printf("Total basal length, including soma (computed with L/nseg):\n\tprox\t%g\ndist\t%g\ntotal\t%g\n",prLen,totLen-prLen,totLen)
+
+    return prLen
+}

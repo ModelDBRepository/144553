@@ -1,0 +1,71 @@
+load_file("nrngui.hoc")
+load_file("define_PFC.hoc") // or a hoc file that specifies the model cell's
+  // anatomical and biophysical properties
+load_file("rigPFCmod.ses") // brings up the following:
+  // RunControl panel
+  // PointProcessManager configured as an IClamp at soma(0.5)
+  // Voltage axis plot of v at the current injection site
+  // space plot of v along at least one path that passes through the current injection site
+  // a Movie Run tool to generate smooth evolution of space plot over time
+
+/*
+1.  First, make sure that the load_file("custominit.hoc") statement below 
+has been commented out.  Then double click on init.hoc or type
+nrngui init.hoc
+
+2.  Determine the "initialization run time" INITDUR.
+Use the GUI to set the IClamp's amp parameter to a value that drives
+v at the current injection site to a level close to what you want.
+Note how long it takes for v throughout the cell to reach steady state.
+This is the value you should use for INITDUR (actually you could use 
+a slightly shorter time, because in the end the cell will be driven 
+to steady state by a voltage clamp, so it will settle a bit faster than 
+the simulation that uses an IClamp does).
+Adjust Tstop in the RunControl panel and run another simulation
+if necessary to make sure that the model is reaching steady state.
+
+3.  Exit NEURON and edit this file to make the following changes in the 
+assignment statements that follow these comments.
+(1)  Change the value assigned to INITDUR to what you determined in step 2.
+(2)  Change the value assigned to V0 so that it is whatever you want the 
+     initial membrane potential at the current injection site to be.
+(3)  Uncomment the load_file("custominit.hoc") statement, 
+     i.e. remove the double slashes // that precede it.
+
+4.  Restart NEURON by double clicking on init.hoc or typing
+nrngui init.hoc
+and you will see a run executed after a custom initialization.
+Verify that membrane potential at the injection site is what 
+you want.
+
+5.  Exit NEURON and make the following additional change:
+Uncomment the load_file("batchrun.hoc") command.
+
+You will now be able to execute a family of runs by entering commands 
+like this at the oc> prompt:
+batchrun(10, 100, -0.1, 0.02, 10)
+will run 10 simulations in which the current pulse 
+begins at 10 ms and lasts 100 ms.
+The pulse amplitudes, starting with the first run, 
+will be -0.1, -0.08, -0.06 . . . 0.08 nA.
+
+Left to right, the parameters specify:
+t at which each pulse starts
+pulse duration
+amplitude of the first run's current pulse
+increment of pulse amplitude between runs
+number of runs
+*/
+
+INITDUR = 50 // change this according to what you discover in step 2 above
+V0 = -62 // the initial v you want at the current injection site
+
+scale_gpas(1.79e-4)
+set_epasNG(60)
+
+load_file("custominit.hoc")
+
+// Uncomment the next line only after load_file("custominit.hoc") has been executed.
+load_file("batchrun.hoc") // executes a family of simulations
+  // that step through a range of current pulses
+  // and shows the time course of membrane potential.

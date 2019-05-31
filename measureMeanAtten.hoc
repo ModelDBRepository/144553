@@ -1,0 +1,372 @@
+/* Measures mean inward and outward attenuation computed over both apical and
+ * dendritic trees, at a range of frequencies.
+ */
+
+objref f  // File reference for output
+strdef file_name, neuron_name, output_dir, direction, which_secs
+objref  m, p, sref // matrix
+objref imp  // Impedance object used to calculate attenuation
+objref vec  // Vector of impedance results for each segment in the neuron
+
+// Defines voltage_vec and time_vec, vectors that are needed by functions in
+// analyticFunctions.hoc.
+xopen("actionPotentialPlayer.hoc")
+
+xopen("readcell.hoc")
+xopen("analyticFunctions.hoc")
+
+/*
+ * Opens output file; the specific name of the output file is determined by
+ * the arguments.
+ *
+ * Arguments:
+ *   $1: frequency at which attenuation is measured
+ *   $2: set to 1 if analyzing apical trees, 2 for basal
+ *   $3: set to 1 to correct for spines
+ *   $4: set to 1 for inward attenuaton, 2 for outward
+ */
+proc openfile() {
+  output_dir = "/Users/pcoskren-sinai/Subversion/WearneLab/Publications/DoronsPaper/Scripts/Output"
+  if ($4 == 1) {
+    direction = "Inward"
+  } else {
+    direction = "Outward"
+  }
+	f = new File()
+	if ($2==1 && $3==1) {
+			sprint(file_name,"%s/%sNormSumAtten%gHzApicSpiny.txt", output_dir, direction, $1)
+		}
+	if ($2==1 && $3==2) {
+			sprint(file_name,"%s/%sNormSumAtten%gHzApic.txt", output_dir, direction, $1)
+		}
+	if ($2==2 && $3==1) {
+			sprint(file_name,"%s/%sNormSumAtten%gHzBasaSpiny.txt", output_dir, direction, $1)
+		}
+	if ($2==2 && $3==2) {
+			sprint(file_name,"%s/%sNormSumAtten%gHzBasa.txt", output_dir, direction, $1)
+		}
+
+  print file_name
+	f.wopen(file_name)
+}
+
+/* meanInwardAttenuationAllFrequencies: calculates the mean inward attenuation over a range of
+ * frequencies form 0 to 500, over the specified cell.
+ * Arguments:
+ * $o1: soma -> A SectionRef referring to the neuron's soma
+ * For inward attenuation, measurement (imp.loc) is at the soma, and
+ * voltage clamp (imp.ratio) ranges over the tree.
+ */
+proc meanInwardAttenuationAllFrequencies() { local freq, i, spine_type,\
+                                             real_diam, real_L, ratio \
+                                             localobj path, soma, tree_root
+  soma = $o1
+  //tree_root = $o2				// cmw 8/26/11: doesn't seem to do anything
+  access soma.sec
+    nseg = 1
+    real_diam = diam(0.5)
+    real_L = L
+    diam = 2.0 * STD_SOMA
+    L = 2.0 * STD_SOMA
+  for (freq = 0; freq <= 500; freq += 100) {
+    v_init = E_PAS
+    finitialize(v_init)
+    imp = new Impedance()  // if no arg then this creates one
+    soma.sec imp.loc(0.5)
+    vec = new Vector()
+    dendriticLength = 0
+    forsec "dend" {
+      for (x) {
+        segmentLength = area(x) / (diam(x) * PI)  // area = l*pi*d
+        if (0 != segmentLength) {
+          imp.compute(freq)
+          ratio = imp.ratio(x)
+          if (ratio > 0) {
+            logA = log(1 / ratio)
+            dendriticLength = dendriticLength + segmentLength
+            scaledLogA = logA * segmentLength
+            vec.append(scaledLogA)
+          } else {
+            printf("Warning: negative voltage ratio\n")
+          }
+        }
+      }
+    }
+    sum_norm = vec.sum() / dendriticLength
+    printf("\tFrequency: %g Inward mean attenuation: %g\n", freq, sum_norm)
+  }
+  soma.sec {
+    diam = real_diam
+    L = real_L
+  }
+}
+
+/* meanOutwardAttenuationAllFrequencies: calculates the mean outward attenuation
+ * over a range of frequencies from 0 to 500, for the specified neuron.
+ * Arguments:
+ * $o1: soma -> A SectionRef referring to the neuron's soma
+ *
+ * For outward attenuation, voltage clamp (imp.ratio) is at the soma, and
+ * measurement (imp.loc) ranges over the tree.
+ */
+proc meanOutwardAttenuationAllFrequencies() { local freq, i, spine_type, real_diam, real_L, ratio localobj path, soma, tree_root
+  soma = $o1
+  //tree_root = $o2		// cmw 8/26/11: doesn't seem to do anything
+  soma.sec {
+    nseg = 1
+    real_diam = diam(0.5)
+    real_L = L
+    diam = 2.0 * STD_SOMA
+    L = 2.0 * STD_SOMA
+  }
+  for (freq = 0; freq <= 500; freq += 100) {
+    access soma.sec
+
+    v_init = E_PAS
+    finitialize(v_init)
+    imp = new Impedance() // if no arg then this creates one
+    vec = new Vector ()
+    dendriticLength = 0
+
+    forsec "dend" {
+      for(x) {
+        segmentLength = area(x)/(diam(x) * PI)  // area = l * pi * d
+        dendriticLength=dendriticLength + segmentLength
+        imp.loc(x)
+        imp.compute(freq)
+        soma.sec ratio = imp.ratio(0.5)
+        if (ratio > 0) {
+          scaledLogA = log(1/ratio) * segmentLength
+          vec.append(scaledLogA)
+        } else {
+          print "Warning: negative voltage ratio"
+        }
+      }
+    }
+    sum_norm = vec.sum()/dendriticLength
+    printf("\tFrequency: %g Outward mean attenuation: %g\n", freq, sum_norm)
+  }
+  soma.sec {
+    diam = real_diam
+    L = real_L
+  }
+}
+
+
+/*********  same functions as above, except you can just send a SectionList to specify which dendrites
+			to evaluate
+*********/
+
+
+/* meanInAttenAllFreq_SecList: calculates the mean inward attenuation over a range of
+ * frequencies form 0 to 500, over the specified cell.
+ * Arguments:
+ * $o1: soma -> A SectionRef referring to the neuron's soma
+ * For inward attenuation, measurement (imp.loc) is at the soma, and
+ * voltage clamp (imp.ratio) ranges over the tree.
+ *	$o2		SectionList specifying which branches to sum over
+ */
+proc meanInAttenAllFreqs_SecList() { local freq, i, spine_type,\
+                                             real_diam, real_L, ratio, verbose \
+                                             localobj path, soma, tree_root
+
+  if( numarg() < 3 ) {  verbose = 0 }  else { verbose = $3 }
+
+  soma = $o1
+  //tree_root = $o2				// cmw 8/26/11: doesn't seem to do anything
+  access soma.sec
+    nseg = 1
+    real_diam = diam(0.5)
+    real_L = L
+    diam = 2.0 * STD_SOMA
+    L = 2.0 * STD_SOMA
+  for (freq = 0; freq <= 500; freq += 100) {
+
+    v_init = E_PAS
+    finitialize(v_init)
+    imp = new Impedance()  // if no arg then this creates one
+    soma.sec imp.loc(0.5)
+    vec = new Vector()
+    dendriticLength = 0
+    forsec $o2 {			// cmw 8/28/11:  this line is the only change.
+      for (x) {
+        segmentLength = area(x) / (diam(x) * PI)  // area = l*pi*d
+        if (0 != segmentLength) {
+          imp.compute(freq)
+          ratio = imp.ratio(x)
+          if (ratio > 0) {
+            logA = log(1 / ratio)
+            dendriticLength = dendriticLength + segmentLength
+            scaledLogA = logA * segmentLength
+            vec.append(scaledLogA)
+  	    if( verbose && freq == 0 && scaledLogA > 0 ) {
+	      printf("%s\t%g\t%g\t%g\n",secname(),x,distance(x),scaledLogA)
+            }
+          } else {
+            printf("Warning: negative voltage ratio\n")
+          }
+        }
+      }
+    }
+    sum_norm = vec.sum() / dendriticLength
+    printf("\tFrequency: %g Inward mean attenuation: %g\n", freq, sum_norm)
+  }
+  soma.sec {
+    diam = real_diam
+    L = real_L
+  }
+}
+
+/* meanOutwardAttenuationAllFrequencies: calculates the mean outward attenuation
+ * over a range of frequencies from 0 to 500, for the specified neuron.
+ * Arguments:
+ * $o1: soma -> A SectionRef referring to the neuron's soma
+ *
+ * For outward attenuation, voltage clamp (imp.ratio) is at the soma, and
+ * measurement (imp.loc) ranges over the tree.
+ */
+proc meanOutAttenAllFreqs_SecList() { local freq, i, spine_type, real_diam, real_L, ratio, verbose localobj path, soma, tree_root
+
+  if( numarg() < 3 ) {  verbose = 0 }  else { verbose = $3 }
+
+  soma = $o1
+  //tree_root = $o2		// cmw 8/26/11: doesn't seem to do anything
+  soma.sec {
+    nseg = 1
+    real_diam = diam(0.5)
+    real_L = L
+    diam = 2.0 * STD_SOMA
+    L = 2.0 * STD_SOMA
+  }
+  for (freq = 0; freq <= 500; freq += 100) {
+    access soma.sec
+
+    v_init = E_PAS
+    finitialize(v_init)
+    imp = new Impedance() // if no arg then this creates one
+    vec = new Vector ()
+    dendriticLength = 0
+
+    forsec $o2 {			// cmw 8/28/11:  this line is the only change.
+      for(x) {
+        segmentLength = area(x)/(diam(x) * PI)  // area = l * pi * d
+        dendriticLength=dendriticLength + segmentLength
+        imp.loc(x)
+        imp.compute(freq)
+        soma.sec ratio = imp.ratio(0.5)
+        if (ratio > 0) {
+          scaledLogA = log(1/ratio) * segmentLength
+          vec.append(scaledLogA)
+	  if( verbose && freq == 0 && scaledLogA > 0) {
+	    printf("%s\t%g\t%g\t%g\n",secname(),x,distance(x),scaledLogA)
+          }
+        } else {
+          print "Warning: negative voltage ratio"
+        }
+      }
+    }
+    sum_norm = vec.sum()/dendriticLength
+    printf("\tFrequency: %g Outward mean attenuation: %g\n", freq, sum_norm)
+  }
+  soma.sec {
+    diam = real_diam
+    L = real_L
+  }
+}
+
+
+
+
+/* meanInAtten_SecListWithLoc: calculates the mean inward attenuation at DC for 
+ * specific SectionList/x location pairs.
+ *
+ * Arguments:
+ * $o1: soma -> A SectionRef referring to the neuron's soma
+ * For inward attenuation, measurement (imp.loc) is at the soma, and
+ * voltage clamp (imp.ratio) ranges over the tree.
+ *	$o2		SectionList specifying which branches to sum over
+ *	$o3		vector of locations associated with each branch in the SectionList
+ *	$s4		filename
+ */
+proc meanInAtten_SecListWithLoc() { local freq, i, spine_type,\
+                                             real_diam, real_L, ratio, verbose, cnt, xloc \
+                                             localobj path, soma, tree_root
+
+  verbose = 1
+
+  soma = $o1
+
+print "Filename ",$s4
+  f = new File()
+  f.wopen($s4)
+  access soma.sec
+    nseg = 1
+    real_diam = diam(0.5)
+    real_L = L
+    diam = 2.0 * STD_SOMA
+    L = 2.0 * STD_SOMA
+    freq = 0
+
+print "OK 1"
+    v_init = E_PAS
+print v_init
+    finitialize(v_init)
+    imp = new Impedance()  // if no arg then this creates one
+    soma.sec imp.loc(0.5)
+print "more"
+    vec = new Vector()
+print "stuff"
+    dendriticLength = 0
+    cnt = 0
+print "OK 2"
+    forsec $o2 {			
+printf("Now:  %s",secname())
+      xloc = $o3.x[cnt]
+printf("[%g], %d\t",xloc,cnt)
+        segmentLength = area(xloc) / (diam(xloc) * PI)  // area = l*pi*d
+        if (0 != segmentLength) {
+          imp.compute(freq)
+          ratio = imp.ratio(xloc)
+          if (ratio > 0) {
+            logA = log(1 / ratio)
+            dendriticLength = dendriticLength + segmentLength
+            scaledLogA = logA * segmentLength
+            vec.append(scaledLogA)
+	    f.printf("%d\t%g\t%g\t%g\t%g\n",cnt,xloc,segmentLength,logA,imp.transfer(xloc))
+	    printf("%g\n",scaledLogA)
+          } else { f.printf("%d\t%g\t%g\t-1\t%g\n",cnt,xloc,segmentLength,logA,imp.transfer(xloc)) }
+        } else { f.printf("%d\t%g\t%g\t-1\t-1\n",cnt,xloc,segmentLength) }
+      cnt += 1
+    }
+
+  soma.sec {
+    diam = real_diam
+    L = real_L
+  }
+  f.close
+}
+
+
+/**************  end cmw modification of MeasureMeanAtten files **************/
+
+/*
+flag_spines=1  // Spine correction
+apic=1  // Apical tree
+meanInwardAttenuationAllFrequencies()
+meanOutwardAttenuationAllFrequencies()
+
+flag_spines=1  //  Spine correction
+apic=2  // Basal tree
+meanInwardAttenuationAllFrequencies()
+meanOutwardAttenuationAllFrequencies()
+
+flag_spines=2  // No spine correction
+apic=1 // Apical tree
+meanInwardAttenuationAllFrequencies()
+meanOutwardAttenuationAllFrequencies()
+
+flag_spines=2 // No spine correction
+apic=2 // Basal tree
+meanInwardAttenuationAllFrequencies()
+meanOutwardAttenuationAllFrequencies()
+*/

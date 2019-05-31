@@ -1,0 +1,280 @@
+/************************************************************
+
+	Christina Weaver
+	August 2011
+
+    auxiliary procedures for loading data, and model fitting.
+
+************************************************************/
+
+
+/*******  Functions taken from Vetter et al (2001)  *******/
+
+load_file("add_axon.hoc")
+load_file("init_model.hoc")
+
+//add axon and morphologic settings
+init_model()
+add_axon()
+
+
+
+/*******  Function for adjusting dendrite length/diam to account for spines *****/
+/*  Modified from Patrick Coskren's code.                                       */
+
+
+ApicalHeadDiam = .47
+ApicalHeadLen = .71
+ApicalNeckDiam = .19
+ApicalNeckLen = .44
+BasalHeadDiam = .56
+BasalHeadLen = .82
+BasalNeckDiam = .16
+BasalNeckLen = .54
+
+SurfaceAreaOneApicalSpine = (ApicalNeckDiam * PI * ApicalNeckLen + \
+                             ApicalHeadDiam * PI * ApicalHeadLen)
+SurfaceAreaOneBasalSpine = (BasalNeckDiam * PI * BasalNeckLen + \
+                            BasalHeadDiam * PI * BasalHeadLen)
+
+
+/*
+ * Adds spines to a cell on all dendrites that are part of the specified SectionList.
+ * pattern.  The
+ * global variable flag_spines is ignored, since this method only makes sense
+ * to call when spine processing is desired.
+ *
+ * Arguments:
+ * $o1: SectionList to loop over
+ * $2:  Surface area of a single spine
+ * $3:  spine density for branches in the SectionList
+ *
+ *  written by Christina Weaver, Jan 2012
+ */
+proc applySubtreeConstantSpineDensity() { local total_surface_area, dend_surface_area, \
+    surface_area_one_spine, surface_area_all_spines, spine_dens, mean_diam
+
+  // Ensure that NEURON evaluates the cell in 3D mode when calling diam(), by
+  // using a side effect of the area() call.  It doesn't matter which section
+  // is used for the call, and the return value of area() can be discarded.
+  forall {
+    area(0.5)
+  }
+
+  // This used to be at the end of the function.  I'm trying to move it to the
+  // top, where it makes more sense, since the for(x) construct gets used to
+  // do the spine adjustment.
+  geom_nseg(100, 0.1)  // nseg according to frequency
+  forall {
+    nseg *= 9
+  }
+
+  surface_area_one_spine = $2
+  spine_dens = $3
+  dendrite_count = 0
+  total_surface_area = 0
+  forsec $o1 {
+
+    dendrite_count = dendrite_count + 1
+    temp = area(0.5)
+    num_spines = L * spine_dens
+
+    dend_surface_area = 0
+    mean_diam = 0
+    for (x) {
+      dend_surface_area = dend_surface_area + area(x)
+      if( x > 0 && x < 1 )  mean_diam += diam(x)
+    }
+    mean_diam /= nseg
+    total_surface_area = total_surface_area + dend_surface_area
+
+    // adjusted by Christina Weaver, 5 Jan 12.  Still some error, but better than using 
+    // Patrick's method which sets the diam throughout the section to whatever it is in the 
+    // middle of the section.  
+    //
+    if (dend_surface_area > 0 && num_spines > 0) {
+      surface_area_all_spines = (surface_area_one_spine * num_spines)
+      factor = (dend_surface_area + surface_area_all_spines) / dend_surface_area
+      L = L * (factor^(2/3))
+      diam = mean_diam * (factor^(1/3))
+    }
+  }
+  printf("Dendrite_count: %d\n", dendrite_count)
+  printf("total surface area before spine correction: %f\n", total_surface_area)
+}
+
+
+
+
+/*******  Functions for computing firing rates  *******/
+
+
+objref spiketimes, apc, isi, fr, ihold
+
+
+proc set_dataVec() {
+
+
+      spiketimes = new Vector() 
+
+	apc = new APCount(0.5)
+
+	apc.record(spiketimes)
+}
+
+
+
+
+
+/********************************************************
+
+    calcFR_bounds()
+
+    calculate the mean FR and CV during a specified time 
+    window.
+
+    input    float $1    left endpoint of time window
+             float $2    right endpoint of time window
+
+********************************************************/
+func calcFR_bounds() { local k, tmx
+
+    objref isi, fr
+
+    isi = new Vector()
+    fr = new Vector()
+
+    for( k = 0; k < apc.n-1; k = k+1 ) {
+        if( spiketimes.x[k] >= $1 && spiketimes.x[k+1] <= $2) {
+	    isi.append(spiketimes.x[k+1]-spiketimes.x[k])
+    	    fr.append(1000/isi.x[isi.size-1])
+         }
+    }
+
+    if( fr.size == 0 ) {
+        printf("Found %d spikes; FR mean = 0, stdev 0, CV 0\n",apc.n)
+        return 0.0
+    }
+    if( fr.size > 2 ) {
+	print "FR mean = ", fr.mean, " stdev ",fr.stdev, " CV ", fr.stdev/fr.mean
+    } else { printf("Found %d spikes; FR mean = %.1f\n",apc.n,fr.mean) }
+
+    return fr.mean
+}
+
+
+
+
+
+/************************************************************************************* 
+
+    eval_FRandCV()
+
+	Inputs:		float  $1	start time for FR / CV window
+			float  $2	end time for FR / CV window
+                        float  $3	amplitude of current injection
+                        strdef $s4	file basename
+			int    $5	0 or 1, write .Vbin file?
+			int		$6	0 or 1, print verbose output?
+
+************************************************************************************/
+func eval_FRandCV() {  local old_tstop, old_dur, mnF
+
+    old_tstop = tstop
+    old_dur   = IClamp[0].dur
+
+    tstop = $2
+    IClamp[0].amp = $3
+    if( IClamp[0].dur == 0 ) { IClamp[0].dur = tstop }
+    printf("Injecting %g pA: \n",$3*1e3)
+
+    // set up to record APs
+    set_dataVec()
+
+    init()
+    run()
+
+    mnF = calcFR_bounds($1,$2)
+
+    tstop  = old_tstop
+    IClamp[0].dur = old_dur
+    
+    return mnF
+}
+
+
+
+
+
+/*************************************************************************
+
+        run_1Step
+        
+        use appropriate level of holding current, then inject specified level of current on top.
+        
+        Christina Weaver, 13 Oct 2011
+        
+        simplified down from vary_kinetics() below.
+
+        input         $1        start time to record FR
+                        $2        end time to record FR
+                        $3        total step amplitude, including holding current
+
+*************************************************************************/
+proc run_1Step() {  local mnF
+
+
+    soma ihold = new IClamp(0.5)
+    ihold.del = 0
+    ihold.dur = 1e9
+    init() // make sure that IHOLD has been computed
+    ihold.amp = IHOLD
+
+    IClamp[0].del = 100
+    IClamp[0].dur = 2000
+
+        mnF = eval_FRandCV($1,$2,$3-ihold.amp,"tmp",0,1)  
+}
+
+
+
+
+
+/*******  Functions to alter model parameters throughout the cell *******/
+
+
+proc scaleNa() {
+    soma gbar_na = $1
+    forsec dendritic gbar_na = $1
+    forsec axSame  gbar_na = $1
+    forsec axExcit gbar_na = $1*$2
+}
+
+proc scaleKV() { 
+	forall { 
+		if(ismembrane("kv") )  gbar_kv = $1 
+	}
+	forsec axExcit  gbar_kv = $1*$2
+}
+
+proc scale_gpas() {
+    forall {
+    	ifsec "node" continue
+    	g_pas = $1
+	}
+}
+
+
+proc scale_cm() {
+    forall {
+	cm = $1
+    	ifsec "node" cm = 0.4 * $1
+    }
+}
+
+
+proc set_epasNG() {
+    forall e_pas = -1*$1
+}
+
+

@@ -1,0 +1,53 @@
+/************************************************************
+
+	Christina Weaver
+	August 2011
+	
+	insert channels from Vetter et al (2001) into Jennie's 
+	PFC and Visual Cortex neurons.  Includes Mainen's 
+	synthetic axon (from the 1995 Mainen et al. paper).
+
+************************************************************/
+
+load_file("nrngui.hoc")
+
+// now load morph;  recall that 'basic_shape()' resets the morphology
+load_file("May3IR2t_ImportFromSWCthenManual_Aug19-11.hoc")
+
+load_file("aux_procs.hoc")
+
+xopen("electro_procs.hoc")
+
+PFC_effective_ApicalSpineDensity = 0.83524895	//  total of 5891 spines, divided by total apical length of 7052.987 microns
+PFC_effective_BasalSpineDensity  = 1.1177593	//  total of 4014 spines, divided by total basal  length of 3591.1131 microns
+
+applySubtreeConstantSpineDensity(apical, SurfaceAreaOneApicalSpine, PFC_effective_ApicalSpineDensity)
+applySubtreeConstantSpineDensity(basal,  SurfaceAreaOneBasalSpine,  PFC_effective_BasalSpineDensity)
+geom_nseg(100,0.1)
+
+
+
+  xopen("measureMeanAtten.hoc")
+  soma {
+    nseg = 1
+    soma_ref = new SectionRef()
+  }
+
+scale_gpas(3.8e-5)
+  set_epasNG(69)
+
+{printf("Outward Atten, apical\n")}
+  meanOutAttenAllFreqs_SecList(soma_ref,apical)
+{printf("\n\nInward Atten, apical\n")}
+  meanInAttenAllFreqs_SecList(soma_ref,apical)
+{printf("\n\nOutward Atten, basal\n")}
+  meanOutAttenAllFreqs_SecList(soma_ref,basal)
+{printf("\n\nInward Atten, basal\n")}
+  meanInAttenAllFreqs_SecList(soma_ref,basal)
+
+{
+    printf("\n\n*****\n\nTo plot morphoelectrotonic transforms, go to\n")
+    printf("\tNEURON Main Menu -> Tools -> Impedance -> Shape\n")
+}
+
+

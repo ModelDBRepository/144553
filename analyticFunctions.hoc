@@ -1,0 +1,156 @@
+/*
+ * Prints to stdout a table containing the voltage at all points in a
+ * dendritic tree, after 10 ms of simulation in response to a recorded somatic
+ * action potential.
+ *
+ * globals:
+ *   voltage_vec
+ *   time_vec
+ *   which_secs
+ *
+ * Arguments:
+ *   $o1: soma -> A SectionRef pointing to the soma.
+ *   $o2: voltage_vec -> A vector containing an experimentally measured somatic
+ *                       action potential.
+ *   $o3: time_vec -> A vector containing the time points for voltage_vec
+ *   $s4: which_secs -> A regular expression that specifies all the dendritic
+ *                      sections over which the function should iterate.
+ *
+ */
+objref graphs
+proc BAPvalues() { local real_diam, real_L, rt, rtstart, ts localobj voltage_vec, time_vec, distances, voltages,\
+                   output_matrix, soma
+  soma = $o1
+  soma.sec {
+    nseg = 1
+    real_diam = diam(0.5)
+    real_L = L
+    diam = 2.0 * STD_SOMA
+    L = 2.0 * STD_SOMA
+  }
+  voltage_vec = $o2
+  time_vec = $o3
+  strdef which_secs
+  which_secs = $s4
+
+  access soma.sec
+
+  // Set up the attenuation values by playing an action potential into the
+  // soma for ten seconds.  The action potential itself only lasts 2.
+  v_init = E_PAS
+  finitialize(v_init)
+  tstop = 10
+  dt = 0.025
+//  voltage_vec.play(&soma.sec.v(0.5), time_vec)
+  voltage_vec.play(&soma.sec.v(0.5), .025)
+
+  run()
+  /*
+  // Replace run() with its implementation, for debugging
+	running_ = 1
+	stdinit()
+	realtime = 0  rt = screen_update_invl  rtstart = startsw()
+	eventcount=0
+	eventslow=1
+	stoprun = 0
+	if (using_cvode_) {
+		cvode.event(tstop)
+		ts = tstop
+		if (cvode.use_local_dt) {
+			cvode.solve(ts)
+			flushPlot()
+			realtime = startsw() - rtstart
+			return
+		}
+	}else{
+		ts = tstop - dt/2
+	}
+
+  soma {
+    print "soma stats:"
+    print nseg
+    print L
+    print diam(0)
+    print diam(0.5)
+    print diam(1)
+    print area(0)
+    print area(0.5)
+    print area(1)
+  }
+	while(t < ts && stoprun == 0) {
+	  soma print v(0.5)
+		step()
+		realtime = startsw() - rtstart
+		if (realtime >= rt) {
+			screen_update()
+			//really compute for at least screen_update_invl
+			realtime = startsw() - rtstart
+			rt = realtime + screen_update_invl
+		}
+	}
+	if (using_cvode_ && stoprun == 0) { // handle the "tstop" event
+		step() // so all recordings take place at tstop
+	}
+	flushPlot()
+	realtime = startsw() - rtstart
+  // Done with replacement of run with its implementation
+  */
+
+  distances = new Vector()
+  voltages = new Vector()
+
+  // Baseline for distance is set at the midpoint of the soma, where both of
+  // the dendritic trees are attached.
+  distance(0, 0.5)
+
+  // Iterate over the dendritic tree.
+  forsec which_secs {
+    for(x) {
+      distances.append(distance(x))
+      voltages.append(val_max(x) - v_init)  // Assumes the "max" mechanism is
+                                            // installed in the neuron.
+    }
+  }
+
+  // Output the data
+  output_matrix = new Matrix(voltages.size(), 2)
+  output_matrix.setcol(0, distances)
+  output_matrix.setcol(1, voltages)
+
+  output_matrix.printf()
+
+  soma.sec {
+    diam = real_diam
+    L = real_L
+  }
+}
+
+/*
+ * Calculates the steady-state voltage in response to current steps of
+ * ranging from -120 pA to 80 pA, in 20 pA increments, for a duration of 200
+ * ms each.  These should fall along a line, the slope of which is the input
+ * resistance.  The values are printed in a single line, tab-delimited.
+ *
+ * $o1: a SectionRef pointing to the section into which the current should
+ *      be injected.
+ */
+proc inputResistance() { local equilibrium_value, i localobj stim, stim_target
+  $o1.sec stim_target = new SectionRef()
+  tstop = 250		//200
+  dt = 0.025
+
+  stim_target.sec { stim = new IClamp(0) }
+
+  stim.del = 150			//0  //cmw 8/25/11:  allow some delay for 'initialization'
+  stim.dur = 200
+  tstop=stim.del+200		// cmw 8/25/11
+  
+  for (i = -.120; i <= 0.080; i += 0.02) {
+    v_init = E_PAS
+    stim.amp = i
+    finitialize(v_init)
+    run()
+    equilibrium_value = stim_target.sec.v(0.5)
+    printf("%f\t", equilibrium_value)
+  }
+}

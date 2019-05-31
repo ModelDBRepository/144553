@@ -1,0 +1,242 @@
+/**********************************************************************
+
+// Taken from dendritica, settings.hoc
+//
+
+Copyright (C) 2001  Philipp Vetter, Arnd Roth and Michael Hausser
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+**********************************************************************/
+
+spinescale = 1
+dendscale = 1
+objref stim, biasStim
+
+proc reset() {  /* set the whole environment to its standard settings */
+
+	active_set()
+	passive_set()
+}
+
+
+
+
+/**********************************************************************/
+
+proc active_set()  {	/* set active model parameters  */
+			/* $1 		gbar_na		*/
+			/* $2 		gbar_kv		*/
+			/* $3 		gbar_na (node) 	*/
+			/* $4 		g_qq	 	*/
+			/* $5 		qq_end	 	*/
+			/* $6 		qq_steep 	*/
+			/* $7 		qq_half	 	*/
+
+		n = numarg()
+		if (n>0)  g_na     = $1 else g_na     = G_na
+		if (n>1)  g_kv     = $2 else g_kv     = G_kv
+		if (n>2)  g_nanode = $3 else g_nanode = G_nanode
+		if (n>3)  g_kvnode = $4 else g_kvnode = G_kvnode
+		if (n>4)  g_qq      = $5 else g_qq		= G_qq
+		if (n>5)  qq_end    = $6 else qq_end		= Qq_end 
+		if (n>6)  qq_steep  = $7 else qq_steep 	= Qq_steep
+		if (n>7)  qq_half   = $8 else qq_half		= Qq_half
+
+		if (Iq_current)	forsec all \
+		gbar_qq=qq_end+(g_qq-qq_end)/(1+exp((distance(0)-qq_half)/qq_steep))
+		
+		forsec "soma"         { gbar_na	= g_na
+					gbar_kv = g_kv  }
+
+		forsec "myelin"         gbar_na = g_na
+  
+		forsec "node"         {	gbar_na = g_nanode
+		               		gbar_kv = g_kvnode}
+
+		forsec "hill"         {	gbar_na = g_nanode
+		               		gbar_kv = g_kvnode }
+
+		forsec "iseg"         {	gbar_na = g_nanode
+		               		gbar_kv = g_kvnode }
+	
+		// Vetter et al used different settings here for spines vs. dendrites
+		forsec dendritic     {	gbar_kv = g_kv*dendscale 
+			  		gbar_na = g_na*dendscale 
+					if (Iq_current) gbar_qq *= dendscale 
+		}
+
+}
+
+/**********************************************************************/
+
+proc passive_set() { /* set passive properties	*/
+		     /* $1 	rm		*/
+		     /* $2 	rax		*/
+		     /* $3 	c_m 		*/
+		     /* $4 	cm_myelin	*/
+		     /* $5 	qq_end	 	*/
+		     /* $6 	qq_steep 	*/
+		     /* $7 	qq_half	 	*/
+
+		n = numarg()
+		if (n>0)  rm        = $1      else rm     	= Rm
+		if (n>1)  rax       = abs($2) else rax    	= Rax
+		if (n>2)  c_m       = $3      else c_m    	= C_m
+		if (n>3)  cm_myelin = $4      else cm_myelin	= Cm_myelin
+		if (n>4)  rm_node   = $5      else rm_node	= Rm_node
+		if (n>5)  rm_end    = $6      else rm_end	= Rm_end 
+		if (n>6)  rm_steep  = $7      else rm_steep	= Rm_steep
+		if (n>7)  rm_half   = $8      else rm_half	= Rm_half
+
+		if (!nonuniform_Rm) rm_end = rm	 /* only nonuniform distr if nonuniform_Rm==1 */ 
+		//origin.sec distance(0,originx)
+                forall {if (rm-rm_end==0) g_pas =1/rm else \
+			g_pas = 1/(rm+(rm-rm_end)/(1+exp((distance(0)-rm_half)/rm_steep)))
+                        cm    = c_m
+                        Ra    = rax
+                       }
+                forsec "myelin"  	cm    = cm_myelin	
+               	forsec "node"    	g_pas = 1/rm_node	
+               	forsec "iseg"    	g_pas = 1/rm	/* make sure iseg & hill have uniform rm */	
+               	forsec "hill"    	g_pas = 1/rm	
+
+            /****
+                forsec dendritesI     {	cm     *= spinescale		// spine corrections
+                                	g_pas  *= spinescale }
+
+		forsec dendritesII    {	cm     *= spinescaleII		// spine corrections
+                                	g_pas  *= spinescaleII }
+
+		forsec dendritesIII   { dendarea = 0			// spine corrections Rapp
+					for(x) dendarea+= area(x)
+					spinarea        = 10*L
+					spinescaleIII   = (spinarea+dendarea)/dendarea
+                                	cm     	       *= spinescaleIII
+                                	g_pas  	       *= spinescaleIII }
+            ****/
+			}
+
+/**********************************************************************/
+
+
+
+proc get_standard()	{ /* standard settings, implemented substitutively, whenever a neuron is loaded */
+		Iq_current 	= 0		/* substitutively no Iq_current */
+		Ca_current	= 0		/* substitutively no Ca_current */
+		KCa_current	= 0		/* substitutively no KCa_current */
+		Km_current	= 0		/* substitutively no Km_current */
+		nonuniform_Rm	= 0		/* substitutively no nonuniform Rm */
+		electrotonicL	= 0		/* substitutively physical lengths */
+		activespine	= 1		/* model spines with active membrane */
+		currentdist	= 1		/* status for which distlist to use*/
+		currentcell	= 0		/* number of currently active cell */
+		simMode 	= 0		/* 0 IClamp 1 Vclamp simulation  */
+		celsius    	= 37		/* general settings */
+		originx         = 0.5           /* where to add axon */
+		Ek         	= -90
+		Ena        	= 60
+		cells 		= 1
+		swc		= 0		/* flag is turned on for Duke Southampton files */
+		synthetic       = 0             /* synthetic neurons need longer simulation time */
+
+		St_del         	= 0		/* stimulation (duration,delay,amplitude) */
+		St_amp		= 1		
+		St_dur		= 9999
+
+		Sim_durI	= 0		/* simulation (duration & dt) */
+		Sim_dtI		= 0.25		/* run for Sim_durI with Sim_dtI, 
+						   then Sim_dur with Sim_dt */
+		Sim_dur		= 15		
+		Sim_dt		= 0.025
+
+		Rec_del		= Sim_durI	/* recording options (for display) */
+		Rec_dur		= Sim_dur
+		Rec_dt		= Sim_dt		
+
+		/* passive membrane properties, which aren't being changed in general */
+		Rm_node 	= 50
+		Cm_myelin  	= 0.04
+
+		G_ca		= .3		/* 13.8.98 */
+		G_kca		= .1
+		G_km		= 3
+		Rm_end		= Rm_half = Rm_steep = 0
+		G_qq		= 0.02		/* Iq settings */
+		Qq_end 		= 20
+		Qq_steep	= 439
+		Qq_half		= 50
+
+
+			}
+			
+			
+			
+proc act0_set() {		/* Zach Nature standard (kvz|naz) */
+
+    Rax		= 150		/* passive membrane properties */
+	Rm         	= 12000
+	C_m        	= 1
+	G_kv		= 30		/* active membrane properties */
+	G_kvnode	= 500
+	G_na		= 35
+	G_nanode	= 35000
+  	insert_channels()	
+}
+
+
+
+proc pass0_set() {		/* Zach Nature standard (kvz|naz) */
+
+    Rax		= 150		/* passive membrane properties */
+	Rm         	= 12000
+	C_m        	= 1
+	G_kv		= 30		/* active membrane properties */
+	G_kvnode	= 500
+	G_na		= 35
+	G_nanode	= 35000
+}
+
+
+
+proc init_model() {
+
+	get_standard()		// initialize standard settings  (T, activespine ...) 
+	act0_set()			// just use the Vetter et al default
+	reset()
+}
+
+proc init_iclamps() {
+	stim = new IClamp(0.5)
+	stim.del = 0
+	stim.dur = 0
+	stim.amp = 0
+	
+	biasStim = new IClamp(0.5)
+	biasStim.del = 0
+	biasStim.dur = 1e5
+	biasStim.amp = 0
+}
+
+
+proc init_passive_model() {
+
+	get_standard()		// initialize standard settings  (T, activespine ...) 
+	pass0_set()
+	insert_passive()
+	passive_set()
+	
+}
+
+

@@ -1,0 +1,105 @@
+
+strdef synFilename
+objref synFout, tv, iv
+
+/**********************
+
+    Written originally in main_PFC_simEPSC_all.hoc; now copied here.
+
+    $1  number of synapses
+    $2  value of tau1
+    $3  value of tau2
+    $4  value of gAMPA
+    $s5 file basename
+
+**********************/
+proc synTweak() { local i, vecsz, btyp
+
+    adjust_tau1($2,$1)
+    adjust_tau2($3,$1)
+    adjust_gAMPA($4,$1)
+
+    sprint(synFilename,"%s_tR%.4f_tF%.2f_gAMP%.5f.Ibin",$s5,$2,$3,$4)
+    synFout = new File()
+    synFout.wopen(synFilename)
+
+    tv = new Vector()
+    tv.record(&t)
+    iv = new Vector()
+    iv.record(&seClamp.i)
+
+    init()
+    run()
+
+    vecsz = tVec.size()
+    synFout.vwrite(&vecsz)
+    tv.fwrite(synFout)
+    iv.fwrite(synFout)
+    synFout.close()
+
+    sprint(synFilename,"%s_tR%.4f_tF%.2f_gAMP%.5f_dist.txt",$s5,$2,$3,$4)
+    synFout = new File()
+    synFout.wopen(synFilename)
+
+    i = 0
+    forsec synBranches {
+        btyp = 0
+	ifsec apical { btyp = 1 }
+	ifsec basal  { btyp = 2 }
+        synFout.printf("%d\t%g\t%g\t%d\n",i,distance(synLoc.x[i]),distance(synLoc.x[i])-soma.diam,btyp)
+         i+=1
+    }
+    synFout.close()
+}
+
+
+
+/**********************
+
+    Written originally in main_PFC_simEPSC_all.hoc; now copied here.
+
+    $1  number of synapses
+    $2  value of tau1
+    $3  value of tau2
+    $4  value of gAMPA
+    $s5 file basename
+
+**********************/
+proc synITweak() { local i, vecsz, btyp
+
+    adjust_Itau1($2,$1)
+    adjust_Itau2($3,$1)
+    adjust_gGABA($4,$1)
+
+    sprint(synFilename,"%s_INtR%.4f_tF%.2f_gGAB%.5f.Ibin",$s5,$2,$3,$4)
+    synFout = new File()
+    synFout.wopen(synFilename)
+
+    tv = new Vector()
+    tv.record(&t)
+    iv = new Vector()
+    iv.record(&seClamp.i)
+
+    init()
+    run()
+
+    vecsz = tVec.size()
+    synFout.vwrite(&vecsz)
+    tv.fwrite(synFout)
+    iv.fwrite(synFout)
+    synFout.close()
+
+    sprint(synFilename,"%s_INtR%.4f_tF%.2f_gGAB%.5f_dist.txt",$s5,$2,$3,$4)
+    synFout = new File()
+    synFout.wopen(synFilename)
+
+    i = 0
+    forsec synBranches {
+        btyp = 0
+	ifsec apical { btyp = 1 }
+	ifsec basal  { btyp = 2 }
+        synFout.printf("%d\t%g\t%g\t%d\n",i,distance(synLoc.x[i]),distance(synLoc.x[i])-soma.diam,btyp)
+        i+=1
+    }
+    synFout.close()
+}

@@ -1,0 +1,51 @@
+// 5 args:
+// t at which each pulse starts
+// pulse duration
+// current to be used in first run
+// increment between runs
+// number of runs
+
+objref ihold // an IClamp used to deliver the holding current
+
+proc batchrun() { local ii
+  //Graph[1].exec_menu("Erase")
+
+  soma ihold = new IClamp(0.5)
+  ihold.del = 0
+  ihold.dur = 1e9
+  init() // make sure that IHOLD has been computed
+  ihold.amp = IHOLD
+print "Done ihold = ", IHOLD
+
+  IClamp[0].del = $1
+  IClamp[0].dur = $2
+print "before steps."
+  for ii = 0, $5-1 {
+    IClamp[0].amp = $3 + ii*$4
+    run()
+    //Graph[1].exec_menu("Keep Lines") // toggle Keep Lines on & off
+    //Graph[1].exec_menu("Keep Lines")
+  }
+}
+
+
+proc batchrun_mIHold() { local ii
+  //Graph[1].exec_menu("Erase")
+
+  soma ihold = new IClamp(0.5)
+  ihold.del = 0
+  ihold.dur = 1e9
+  init() // make sure that IHOLD has been computed
+  ihold.amp = IHOLD
+print "Done ihold = ", IHOLD
+
+  IClamp[0].del = $1
+  IClamp[0].dur = $2
+print "before steps."
+  for ii = 0, $5-1 {
+    IClamp[0].amp = $3 + ii*$4 - ihold.amp
+    run()
+    //Graph[1].exec_menu("Keep Lines") // toggle Keep Lines on & off
+    //Graph[1].exec_menu("Keep Lines")
+  }
+}

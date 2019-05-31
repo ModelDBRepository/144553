@@ -1,0 +1,27 @@
+xpanel("Weaver CM 2012 Layer 3 Pyramidal Neuron:  V1 vs dlPFC")
+    xbutton("Figure 9C-D ( dlPFC )", "xopen(\"main_fig9_pfcElec.hoc\")")
+    xbutton("Figure 9C-D ( V1 )", "xopen(\"main_fig9_v1Elec.hoc\")")
+    xbutton("Figure 10 ( dlPFC )", "xopen(\"main_fig10_pfc.hoc\")")
+    xbutton("Figure 10 ( baseline V1 )", "xopen(\"main_fig10_v1baseline.hoc\")")
+    xbutton("Figure 10 ( tuned V1 )", "xopen(\"main_fig10_v1tuned.hoc\")")
+xpanel(102, 183)
+
+xpanel("Simulating EPSCs")
+    xbutton("Figure 11 ( PFC apical )", "{ doApic = 1  xopen(\"main_PFC-ApBas_fig11epsc.hoc\") }")
+    xbutton("Figure 11 ( PFC basal )",  "{ doApic = 0  xopen(\"main_PFC-ApBas_fig11epsc.hoc\") }")
+    xbutton("Figure 11 ( V1, same gAMPA, apical )", "{ doSynType = 0  xopen(\"main_V1-ApBas_fig11epsc.hoc\") }")
+    xbutton("Figure 11 ( V1, same gAMPA, basal )",  "{ doSynType = 1  xopen(\"main_V1-ApBas_fig11epsc.hoc\") }")
+    xbutton("Figure 11 ( V1, low gAMPA, apical )", "{ doSynType = 2  xopen(\"main_V1-ApBas_fig11epsc.hoc\") }")
+    xbutton("Figure 11 ( V1, low gAMPA, basal )",  "{ doSynType = 3  xopen(\"main_V1-ApBas_fig11epsc.hoc\") }")
+xpanel(280,183)
+
+
+xpanel("Simulating IPSCs")
+    xbutton("Figure 12 ( PFC apical )", "{ doApic = 1  xopen(\"main_PFC-ApBas_fig12ipsc.hoc\") }")
+    xbutton("Figure 12 ( PFC basal )",  "{ doApic = 0  xopen(\"main_PFC-ApBas_fig12ipsc.hoc\") }")
+    xbutton("Figure 12 ( V1, same gAMPA, apical )", "{ doSynType = 0  xopen(\"main_V1-ApBas_fig12ipsc.hoc\") }")
+    xbutton("Figure 12 ( V1, same gAMPA, basal )",  "{ doSynType = 1  xopen(\"main_V1-ApBas_fig12ipsc.hoc\") }")
+    xbutton("Figure 12 ( V1, low gAMPA, apical )", "{ doSynType = 2  xopen(\"main_V1-ApBas_fig12ipsc.hoc\") }")
+    xbutton("Figure 12 ( V1, low gAMPA, basal )",  "{ doSynType = 3  xopen(\"main_V1-ApBas_fig12ipsc.hoc\") }")
+xpanel(546,183)
+
